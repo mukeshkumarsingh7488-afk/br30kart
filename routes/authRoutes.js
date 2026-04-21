@@ -9,7 +9,7 @@ const auth = require("../middleware/auth");
 const cloudinary = require("cloudinary").v2;
 const { sendEmail, vipCertTemplate } = require("../utils/emailTemplate");
 
-const Certificate = require("../models/Certificate");
+const Certificate = require("../models/certificate");
 
 router.post("/register", authController.register);
 router.post("/verify-otp", authController.verifyOTP);
