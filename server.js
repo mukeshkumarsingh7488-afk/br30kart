@@ -21,8 +21,6 @@ const reviewRoutes = require("./routes/reviewRoutes");
 
 // Auto-Review System (Har 3 ghante me ek baar fake review post karega)
 require("./autoReview");
-// HTTP server
-const server = http.createServer(app);
 
 /* ================== APP & SERVER INIT ================== */
 const app = express();
