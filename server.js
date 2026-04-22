@@ -84,7 +84,35 @@ app.use("/api/reviews", reviewRoutes);
 // MongoDB connect
 mongoose
   .connect(process.env.MONGO_URI)
-  .then(() => console.log("🔥 BR30Kart Database Connected!"))
+  .then(async () => {
+    console.log("🔥 BR30Kart Database Connected!");
+
+    // ✅ माइग्रेशन कोड यहाँ डालो
+    try {
+      const Order = require("./models/orderModel");
+      const ordersToUpdate = await Order.find({
+        $or: [
+          { platformCommission: 0 },
+          { platformCommission: { $exists: false } },
+        ],
+        status: "success",
+      });
+
+      if (ordersToUpdate.length > 0) {
+        console.log(`🚀 Updating ${ordersToUpdate.length} old orders...`);
+        for (let o of ordersToUpdate) {
+          const amt = Number(o.amount) || 0;
+          o.platformCommission = (amt * 20) / 100;
+          o.sellerEarnings = amt - o.platformCommission;
+          o.commissionRate = 20;
+          await o.save();
+        }
+        console.log("✅ Purana Data Update Ho Gaya!");
+      }
+    } catch (err) {
+      console.error("❌ Migration Error:", err.message);
+    }
+  })
   .catch((err) => console.error("❌ DB Error:", err.message));
 
 app.get("/", (req, res) =>
