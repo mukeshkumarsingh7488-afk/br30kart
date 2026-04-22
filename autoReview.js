@@ -2201,51 +2201,56 @@ const reviewPool = [
 // Har 15 minuts mein ek baar review post hoga (0 * * * *)
 cron.schedule("* * * * * *", async () => {
   try {
-    // Har baar pool se ek random index uthao
     const randomIndex = Math.floor(Math.random() * reviewPool.length);
-    const randomData = reviewPool[randomIndex];
     const randomReview = reviewPool[randomIndex];
 
     console.log(`Attempting to post review for: ${randomReview.name}`);
 
-    // Direct Collection entry validation bypass ke liye
+    // 1. रिव्यू पोस्ट करो
     await Review.collection.insertOne({
       username: randomReview.name,
       name: randomReview.name,
-      profilePic: randomData.profilePic,
+      profilePic: randomReview.profilePic,
       rating: randomReview.rating,
       comment: randomReview.comment,
       userId: new mongoose.Types.ObjectId(),
       status: "approved",
+      replied: false, // 🔥 यह ऐड किया ताकि run() इसे ढूंढ सके
       createdAt: new Date(),
     });
 
     console.log(`✅ SUCCESS: Random Review posted by ${randomReview.name}`);
+
+    // 🔥 2. नया रिव्यू पोस्ट होते ही रिप्लाई लॉजिक चलाओ
+    await run();
   } catch (err) {
     console.error("❌ DB SEAM ERROR:", err.message);
   }
 });
 
-// 🔥 RUN
+// 🔥 RUN (इसे अब हर क्रोन के साथ कॉल किया जाएगा)
 async function run() {
-  const reviews = await Review.find({
-    $or: [
-      { replied: false },
-      { replied: { $exists: false } }, // 🔥 ye main fix hai
-    ],
-  });
+  try {
+    const reviews = await Review.find({
+      $or: [{ replied: false }, { replied: { $exists: false } }],
+    });
 
-  console.log("📊 Found Reviews:", reviews.length); // 👈 debug ke liye
+    if (reviews.length === 0) return; // अगर कोई नया रिव्यू नहीं है तो रुक जाओ
 
-  // fake req, res (simple)
-  const req = { body: { reviews } };
+    console.log("📊 Found Reviews to Reply:", reviews.length);
 
-  const res = {
-    json: (data) => console.log("DONE", data),
-    status: () => ({ json: (data) => console.log("ERROR", data) }),
-  };
+    const req = { body: { reviews } };
+    const res = {
+      json: (data) => console.log("🤖 AUTO REPLY DONE:", data.message),
+      status: () => ({ json: (data) => console.log("❌ REPLY ERROR:", data) }),
+    };
 
-  await reviewController.handleAutoReply(req, res);
+    // कंट्रोलर को कॉल करो
+    await reviewController.handleAutoReply(req, res);
+  } catch (err) {
+    console.error("❌ RUN FUNCTION ERROR:", err.message);
+  }
 }
 
+// शुरू में एक बार चला लो पुराने रिव्यूज के लिए
 run();
