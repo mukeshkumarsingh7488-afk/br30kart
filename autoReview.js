@@ -2199,7 +2199,7 @@ const reviewPool = [
 //#endregion end auto review
 
 // Har 15 minuts mein ek baar review post hoga (0 * * * *)
-cron.schedule("* * * * * *", async () => {
+cron.schedule("*/15 * * * *", async () => {
   try {
     const randomIndex = Math.floor(Math.random() * reviewPool.length);
     const randomReview = reviewPool[randomIndex];
