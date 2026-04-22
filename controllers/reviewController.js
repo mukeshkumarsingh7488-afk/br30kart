@@ -56,17 +56,24 @@ exports.postReview = async (req, res) => {
 // ==========================================
 exports.getTopReviews = async (req, res) => {
   try {
-    // 1. पेहले टोटल काउंट निकाल लो (बिना किसी फ़िल्टर के)
+    // 1. Total Count (बिना किसी फिल्टर के)
     const totalReviewCount = await Review.countDocuments();
 
+    // 2. Aggregate with Safety
     const reviews = await Review.aggregate([
       {
+        // फिल्टर को ढीला कर दिया ताकि कोई भी रिव्यू न छूटे
         $match: {
-          $or: [{ status: "approved" }, { status: { $exists: false } }],
+          $or: [
+            { status: "approved" },
+            { status: { $exists: false } },
+            { status: "" },
+          ],
         },
       },
       { $sort: { createdAt: -1 } },
       {
+        // यूनिक यूजर्स के हिसाब से ग्रुपिंग
         $group: {
           _id: "$username",
           latestReview: { $first: "$$ROOT" },
@@ -74,26 +81,27 @@ exports.getTopReviews = async (req, res) => {
       },
       { $replaceRoot: { newRoot: "$latestReview" } },
       {
+        // lookup को थोड़ा सेफ बनाया
         $lookup: {
           from: "users",
           localField: "userId",
           foreignField: "_id",
-          as: "userId",
+          as: "userDetails", // नाम बदला ताकि userId (String/Object) डिस्टर्ब न हो
         },
       },
-      { $unwind: { path: "$userId", preserveNullAndEmptyArrays: true } },
-      { $sort: { createdAt: -1 } },
+      { $unwind: { path: "$userDetails", preserveNullAndEmptyArrays: true } },
+      { $limit: 20 }, // टॉप 20 रिव्यूज
     ]);
 
-    // 🔥 यहाँ बदलाव है: डेटा और काउंट दोनों साथ भेजो
-    res.status(200).json({
+    // 3. फाइनल रिस्पॉन्स
+    return res.status(200).json({
       success: true,
-      totalCount: totalReviewCount, // यह रहा आपका DB का टोटल काउंट
-      reviews: reviews, // यह रही आपकी रिव्यूज की लिस्ट
+      totalCount: totalReviewCount || 0,
+      reviews: reviews || [],
     });
   } catch (err) {
-    console.error("Aggregation Error:", err);
-    res.status(500).json({ error: err.message });
+    console.error("Critical Aggregation Error:", err);
+    return res.status(500).json({ success: false, error: err.message });
   }
 };
 
