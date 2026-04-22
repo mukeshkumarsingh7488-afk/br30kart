@@ -10,11 +10,9 @@ exports.getSellerAnalytics = async (req, res) => {
     };
 
     if (start && end) {
-      // 1. Start Date ko din ki shuruat banao (00:00:00 UTC)
       const startDate = new Date(start);
       startDate.setUTCHours(0, 0, 0, 0);
 
-      // 2. End Date ko din ka anth banao (23:59:59 UTC)
       const endDate = new Date(end);
       endDate.setUTCHours(23, 59, 59, 999);
 
@@ -28,35 +26,39 @@ exports.getSellerAnalytics = async (req, res) => {
 
     // Summary Calculations
     let totalRevenue = 0;
-    let pendingPayout = 0;
+    let sellerProfit = 0;
+    let pendingAmount = 0;
+    let adminFee = 0;
 
     orders.forEach((order) => {
-      totalRevenue += order.amount || 0;
-      // Atlas image ke hisaab se 'pending' payout status check
+      totalRevenue += Number(order.amount || 0);
+
+      // ✅ DB से सीधा असली वैल्यू उठाओ (No 0.2/0.8 logic)
+      adminFee += Number(order.platformCommission || 0);
+      sellerProfit += Number(order.sellerEarnings || 0);
+
+      // ✅ Pending Payout का सटीक हिसाब (DB value)
       if (
         order.payoutStatus &&
         order.payoutStatus.toLowerCase() === "pending"
       ) {
-        pendingPayout += order.amount * 0.8;
+        pendingAmount += Number(order.sellerEarnings || 0);
       }
     });
-
-    const adminFee = totalRevenue * 0.2;
-    const sellerEarnings = totalRevenue - adminFee;
 
     res.json({
       success: true,
       summary: {
         totalRevenue: Math.round(totalRevenue),
-        sellerProfit: Math.round(sellerEarnings),
-        pendingAmount: Math.round(pendingPayout),
-        adminFee: Math.round(adminFee),
+        sellerProfit: Math.round(sellerProfit), // असली कमाई
+        pendingAmount: Math.round(pendingAmount), // जो अभी मिलना बाकी है
+        adminFee: Math.round(adminFee), // आपका कमीशन
       },
       sales: orders,
     });
 
     console.log(
-      `📊 Date Range: ${start} to ${end} | Orders Found: ${orders.length}`,
+      `📊 Analytics: ${email} | Orders: ${orders.length} | Range: ${start} - ${end}`,
     );
   } catch (err) {
     console.error("🔥 Analytics Error:", err);
@@ -64,7 +66,7 @@ exports.getSellerAnalytics = async (req, res) => {
   }
 };
 
-// track sales record
+// track sales record (Updated with DB Records)
 exports.getSellerSalesRecords = async (req, res) => {
   try {
     const { sellerEmail, search, from, to } = req.query;
@@ -76,8 +78,8 @@ exports.getSellerSalesRecords = async (req, res) => {
 
     if (from && to) {
       query.createdAt = {
-        $gte: new Date(from),
-        $lte: new Date(to),
+        $gte: new Date(new Date(from).setUTCHours(0, 0, 0, 0)),
+        $lte: new Date(new Date(to).setUTCHours(23, 59, 59, 999)),
       };
     }
 
@@ -85,15 +87,28 @@ exports.getSellerSalesRecords = async (req, res) => {
 
     // 1. Total Gross Revenue (कुल सेल)
     const totalRevenue = orders.reduce(
-      (sum, order) => sum + (order.amount || 0),
+      (sum, order) => sum + (Number(order.amount) || 0),
       0,
     );
 
-    // 2. Pending Payout Logic (सेलर को कितना पैसा देना बाकी है)
-    // इमेज के अनुसार 'payoutStatus' अगर "pending" है, तो उसका 80% निकालो
+    // 2. 🔥 असली Earnings & Commission (सीधा DB से)
+    const totalEarnings = orders.reduce(
+      (sum, order) => sum + (Number(order.sellerEarnings) || 0),
+      0,
+    );
+    const totalCommission = orders.reduce(
+      (sum, order) => sum + (Number(order.platformCommission) || 0),
+      0,
+    );
+
+    // 3. Pending Payout (जो अभी तक 'Pending' है)
     const pendingAmount = orders.reduce((sum, order) => {
-      if (order.payoutStatus === "pending") {
-        return sum + order.amount * 0.8;
+      // 'Pending' या 'pending' दोनों चेक करें
+      if (
+        order.payoutStatus &&
+        order.payoutStatus.toLowerCase() === "pending"
+      ) {
+        return sum + (Number(order.sellerEarnings) || 0);
       }
       return sum;
     }, 0);
@@ -103,10 +118,10 @@ exports.getSellerSalesRecords = async (req, res) => {
       data: {
         orders,
         totals: {
-          revenue: totalRevenue,
-          earnings: totalRevenue * 0.8,
-          commission: totalRevenue * 0.2,
-          pending: pendingAmount, // यह फ्रंटएंड के 4th बॉक्स के लिए है
+          revenue: Math.round(totalRevenue),
+          earnings: Math.round(totalEarnings), // 👈 80% logic removed
+          commission: Math.round(totalCommission), // 👈 20% logic removed
+          pending: Math.round(pendingAmount), // 4th box (Actual Pending)
         },
       },
     });
@@ -123,33 +138,29 @@ exports.getBestSellers = async (req, res) => {
         .status(400)
         .json({ success: false, message: "Email required" });
 
-    // 1. ऑर्डर्स को ग्रुप करें, गिनती (Count) और कुल कमाई (Revenue) निकालें
+    // 1. ऑर्डर्स को ग्रुप करें, Count, Revenue और Earnings निकालें
     const salesStats = await Order.aggregate([
-      { $match: { sellerEmail: email } },
+      { $match: { sellerEmail: email, status: "success" } }, // सिर्फ सफल ऑर्डर्स
       {
         $group: {
           _id: "$productName",
-          count: { $sum: 1 }, // कितनी बार बिका
-          revenue: { $sum: "$amount" }, // टोटल कितनी कमाई हुई (ये फ्रंटएंड के लिए ज़रूरी है)
+          count: { $sum: 1 },
+          totalRevenue: { $sum: { $toDouble: "$amount" } },
+          // 🔥 असली मुनाफा (80%) जो सेलर के पास गया
+          totalEarnings: { $sum: { $toDouble: "$sellerEarnings" } },
         },
       },
       { $sort: { count: -1 } }, // सबसे ज़्यादा बिकने वाला ऊपर
     ]);
 
-    // 2. टेबल के लिए सभी ऑर्डर्स
-    const allOrders = await Order.find({ sellerEmail: email }).sort({
-      createdAt: -1,
-    });
-
-    // 3. सबसे कम बिकने वाला कोर्स (Worst Seller) निकालें
+    // 2. सबसे कम बिकने वाला कोर्स (Worst Seller)
     const worstSeller =
       salesStats.length > 0 ? salesStats[salesStats.length - 1] : null;
 
     res.status(200).json({
       success: true,
-      topSellers: salesStats,
-      worstSeller: worstSeller, // बॉक्स 4 के लिए
-      allData: allOrders,
+      topSellers: salesStats, // इसमें अब 'totalEarnings' भी है
+      worstSeller: worstSeller,
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

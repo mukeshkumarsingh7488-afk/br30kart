@@ -244,13 +244,12 @@ exports.toggleSellerApproval = async (req, res) => {
   }
 };
 
-// Lifetime Sales nikalne ka function
+// Lifetime Sales & Net Profit nikalne ka Updated function
 exports.getFinancialStats = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
-    let filter = { status: "success" }; // सिर्फ सफल ऑर्डर्स का हिसाब
+    let filter = { status: "success" };
 
-    // 📅 अगर डेट फ़िल्टर आया है तो अप्लाई करो
     if (startDate && endDate) {
       filter.createdAt = {
         $gte: new Date(new Date(startDate).setUTCHours(0, 0, 0, 0)),
@@ -263,16 +262,18 @@ exports.getFinancialStats = async (req, res) => {
       {
         $group: {
           _id: null,
-          // 1. कुल बिक्री (Total Sales)
+          // 1. Total Gross Sales
           totalSales: { $sum: { $toDouble: "$amount" } },
 
-          // 2. कुल भुगतान (Total Payout) - सिर्फ वो जो 'Completed' हो चुके हैं
-          // इसमें से 80% सेलर का हिस्सा कैलकुलेट करेंगे
-          totalPaidOrders: {
+          // 2. 🔥 असली Profit (Fee Collected) - सीधा DB से
+          feeCollected: { $sum: { $toDouble: "$platformCommission" } },
+
+          // 3. 🔥 असली Payout (Completed) - सीधा DB से
+          totalPayout: {
             $sum: {
               $cond: [
                 { $in: ["$payoutStatus", ["Completed", "paid"]] },
-                { $toDouble: "$amount" },
+                { $toDouble: "$sellerEarnings" }, // 👈 80% calculate nahi, seedha DB value
                 0,
               ],
             },
@@ -283,15 +284,12 @@ exports.getFinancialStats = async (req, res) => {
         $project: {
           _id: 0,
           totalSales: 1,
-          // सेलर को गया असली पैसा (80%)
-          totalPayout: { $multiply: ["$totalPaidOrders", 0.8] },
-          // आपका 20% मुनाफा (Fee Collected)
-          feeCollected: { $multiply: ["$totalSales", 0.2] },
+          feeCollected: 1,
+          totalPayout: 1,
         },
       },
     ]);
 
-    // अगर डेटा नहीं है तो 0 भेजें
     const result =
       statsData.length > 0
         ? statsData[0]
@@ -307,7 +305,7 @@ exports.getFinancialStats = async (req, res) => {
   }
 };
 
-// 2. Payouts Fetch करने के लिए (Strict Grouping Logic)
+// 2. Payouts Fetch करने के लिए (Updated with DB Records)
 exports.getFridayPayouts = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
@@ -326,7 +324,28 @@ exports.getFridayPayouts = async (req, res) => {
         $group: {
           _id: "$sellerEmail",
           sellerName: { $first: "$sellerName" },
-          // 💰 स्मार्ट कैलकुलेशन: जो 'pending' है वो Due में जाएगा
+
+          // 1. Due Amount (Pending Sales) - सीधा DB से Earnings उठाओ
+          netDue: {
+            $sum: {
+              $cond: [
+                { $in: ["$payoutStatus", ["pending", "Pending"]] },
+                { $toDouble: "$sellerEarnings" }, // 👈 80% logic replaced
+                0,
+              ],
+            },
+          },
+          // 2. Admin Commission for Due (Aapka hissa)
+          adminCommission: {
+            $sum: {
+              $cond: [
+                { $in: ["$payoutStatus", ["pending", "Pending"]] },
+                { $toDouble: "$platformCommission" }, // 👈 20% logic replaced
+                0,
+              ],
+            },
+          },
+          // 3. Gross Due Amount (Total Billable)
           dueAmount: {
             $sum: {
               $cond: [
@@ -336,12 +355,12 @@ exports.getFridayPayouts = async (req, res) => {
               ],
             },
           },
-          // ✅ जो 'Completed' है वो Already Paid में जाएगा
+          // 4. Already Paid (Completed Transactions)
           alreadyPaid: {
             $sum: {
               $cond: [
                 { $in: ["$payoutStatus", ["Completed", "paid"]] },
-                { $toDouble: "$amount" },
+                { $toDouble: "$sellerEarnings" }, // Kitna de chuke ho
                 0,
               ],
             },
@@ -354,11 +373,10 @@ exports.getFridayPayouts = async (req, res) => {
           _id: 0,
           sellerEmail: "$_id",
           sellerName: 1,
-          dueAmount: 1,
+          dueAmount: 1, // Total Sales
+          adminCommission: 1, // Aapki Fee
+          netDue: 1, // Jo abhi transfer karna hai
           alreadyPaid: 1,
-          // कमीशन सिर्फ 'Due' वाले अमाउंट पर कटेगा
-          adminCommission: { $multiply: ["$dueAmount", 0.2] },
-          netDue: { $multiply: ["$dueAmount", 0.8] },
           courses: {
             $map: {
               input: { $setUnion: "$allProducts" },
@@ -386,6 +404,7 @@ exports.getFridayPayouts = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 // 2. Pay Now बटन के लिए (payoutStatus को 'Completed' मार्क करने के लिए)
 exports.updatePayoutStatus = async (req, res) => {
   try {
@@ -397,13 +416,13 @@ exports.updatePayoutStatus = async (req, res) => {
         .json({ success: false, message: "Email is required" });
     }
 
-    // 1. पेआउट डेटा एग्रीगेट करें
+    // 1. पेआउट डेटा एग्रीगेट करें (अब DB से असली वैल्यू उठाएगा)
     const summary = await Order.aggregate([
       {
         $match: {
           sellerEmail: email,
           status: "success",
-          payoutStatus: "pending", // ✅ पुराना वाला 'pending' ही रखा है
+          payoutStatus: "Pending", // 'Pending' बड़े P के साथ चेक करें (Model के हिसाब से)
         },
       },
       {
@@ -412,6 +431,9 @@ exports.updatePayoutStatus = async (req, res) => {
           sellerName: { $first: "$sellerName" },
           quantity: { $sum: 1 },
           courseTotal: { $sum: "$amount" },
+          // 🔥 DB में सेव असली कमाई और कमीशन को जोड़ें
+          totalSellerEarnings: { $sum: "$sellerEarnings" },
+          totalAdminCommission: { $sum: "$platformCommission" },
         },
       },
       {
@@ -419,6 +441,8 @@ exports.updatePayoutStatus = async (req, res) => {
           _id: "$_id.email",
           sellerName: { $first: "$sellerName" },
           totalSales: { $sum: "$courseTotal" },
+          netPayout: { $sum: "$totalSellerEarnings" }, // ✅ असली सेव किया हुआ डेटा
+          adminCommission: { $sum: "$totalAdminCommission" }, // ✅ असली सेव किया हुआ डेटा
           courses: {
             $push: {
               name: "$_id.course",
@@ -434,8 +458,8 @@ exports.updatePayoutStatus = async (req, res) => {
           sellerEmail: "$_id",
           sellerName: 1,
           totalSales: 1,
-          adminCommission: { $multiply: ["$totalSales", 0.2] },
-          netPayout: { $multiply: ["$totalSales", 0.8] },
+          adminCommission: 1, // अब गुणा-भाग की ज़रूरत नहीं, सीधा वैल्यू लो
+          netPayout: 1, // सीधा वैल्यू लो
           courses: 1,
         },
       },
@@ -447,14 +471,14 @@ exports.updatePayoutStatus = async (req, res) => {
         .json({ success: false, message: "No pending orders found." });
     }
 
-    // 2. 🔥 DB में स्टेटस अपडेट करें + Date और Mail Track जोड़ें
+    // 2. DB में स्टेटस अपडेट करें
     await Order.updateMany(
-      { sellerEmail: email, status: "success", payoutStatus: "pending" }, // ✅ 'pending' मैच करेगा
+      { sellerEmail: email, status: "success", payoutStatus: "Pending" },
       {
         $set: {
-          payoutStatus: "Completed", // अब यहाँ 'Completed' हो जाएगा
-          payoutDate: new Date(), // 🚀 आज की असली पेमेंट डेट
-          mailTrack: "SUCCESS MAIL SENT", // 🚀 सेलर डैशबोर्ड के लिए
+          payoutStatus: "Completed",
+          payoutDate: new Date(),
+          mailTrack: "SUCCESS MAIL SENT",
         },
       },
     );
@@ -466,7 +490,7 @@ exports.updatePayoutStatus = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Payout updated, Date saved & Mail sent!",
+      message: "Payout updated using DB records & Mail sent!",
     });
   } catch (error) {
     console.error("Payout Update Error:", error);
@@ -475,13 +499,14 @@ exports.updatePayoutStatus = async (req, res) => {
 };
 
 // ईमेल भेजने का फंक्शन
-
 const sendPayoutEmail = async (sellerData) => {
   try {
+    // 1. Array handling with safety
     const data = Array.isArray(sellerData) ? sellerData[0] : sellerData;
 
     if (!data || !data.sellerEmail) {
-      throw new Error("Invalid seller data");
+      console.error("⚠️ Invalid sellerData received:", data);
+      throw new Error("Invalid seller data or missing email");
     }
 
     const transporter = nodemailer.createTransport({
@@ -492,32 +517,42 @@ const sendPayoutEmail = async (sellerData) => {
       },
     });
 
-    const courseRows = (data.courses || [])
-      .map(
-        (c) => `
+    // 2. Formatting Course Rows (Safe Mapping)
+    const coursesArr = data.courses || [];
+    const courseRows =
+      coursesArr.length > 0
+        ? coursesArr
+            .map(
+              (c) => `
             <tr>
-                <td style="padding: 12px; border-bottom: 1px solid #eeeeee;">
-                    ${c.name || "N/A"} <b>(x${c.count || 1})</b>
+                <td style="padding: 12px; border-bottom: 1px solid #eeeeee; font-family: sans-serif; font-size: 14px;">
+                    ${c.name || "Unknown Course"} <b>(x${c.count || 0})</b>
                 </td>
-                <td style="padding: 12px; text-align: right; font-weight: bold;">
+                <td style="padding: 12px; text-align: right; font-weight: bold; font-family: sans-serif; font-size: 14px; color: #2ecc71;">
                     ₹${Number(c.total || 0).toLocaleString("en-IN")}
                 </td>
             </tr>
         `,
-      )
-      .join("");
+            )
+            .join("")
+        : `<tr><td colspan="2" style="padding: 12px; text-align: center; color: #888;">No course details available</td></tr>`;
 
+    // 3. Email Config
     const mailOptions = {
-      from: `"BR30 Kart ADMIN" <${process.env.EMAIL_USER}>`,
+      from: `"BR30 Kart Admin" <${process.env.EMAIL_USER}>`,
       to: data.sellerEmail,
-      bcc: process.env.ADMIN_EMAIL ? [process.env.ADMIN_EMAIL] : undefined,
+      // Admin copy taaki aapke paas bhi record rahe
+      bcc: process.env.ADMIN_EMAIL || [],
       subject: `✅ Payment Processed: ₹${Number(data.netPayout || 0).toLocaleString("en-IN")} Credited`,
       html: payoutTemplate(data, courseRows),
     };
 
-    return await transporter.sendMail(mailOptions);
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`📧 Payout Email Sent to: ${data.sellerEmail}`);
+    return info;
   } catch (err) {
-    console.error("❌ sendPayoutEmail Error:", err);
+    console.error("❌ sendPayoutEmail Error:", err.message);
+    // Yahan hum error throw karenge taaki controller ko pata chale ki email fail hua
     throw err;
   }
 };

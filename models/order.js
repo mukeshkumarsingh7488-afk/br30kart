@@ -1,28 +1,42 @@
 const mongoose = require("mongoose");
 
 const OrderSchema = new mongoose.Schema({
-  // 🆔 Ye 'productId' hi aapki 'Course ID' hai.
-  // Isse hum track karenge ki user ne konsa course kharida hai.
   productId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Product",
     required: true,
   },
 
-  productName: String, // Course ka naam
-  amount: Number, // Kitna paisa diya
+  productName: String,
+  amount: Number,
+
+  // 💰 NEW: कमीशन और कमाई का हिसाब (Add kiya gaya)
+  platformCommission: {
+    type: Number,
+    required: true,
+    default: 0,
+  },
+  sellerEarnings: {
+    type: Number,
+    required: true,
+    default: 0,
+  },
+  commissionRate: {
+    type: Number,
+    default: 20, // Aapka standard 20% commission
+  },
 
   // 👨‍🏫 Seller Tracking
   sellerId: {
     type: String,
-    required: true,
+    required: false,
   },
   sellerEmail: String,
   sellerName: String,
 
-  // 👤 Buyer Tracking (Access isi se check hoga)
+  // 👤 Buyer Tracking
   customerName: String,
-  customerEmail: String, // Sabse important field access ke liye
+  customerEmail: String,
 
   // 💳 Payment Details
   paymentId: String,
@@ -31,10 +45,9 @@ const OrderSchema = new mongoose.Schema({
   // 🔄 Status Tracking
   status: {
     type: String,
-    default: "pending", // Payment hote hi isse "success" ya "completed" karna hai
+    default: "pending",
   },
 
-  // 💰 Payout Tracking (Seller ko paise bhejne ke liye)
   payoutStatus: {
     type: String,
     enum: ["Pending", "Completed"],
@@ -53,5 +66,4 @@ const OrderSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 
-// Final Export (Ek hi baar export karna kaafi hai)
 module.exports = mongoose.model("Order", OrderSchema);

@@ -108,7 +108,7 @@ exports.verifyPayment = async (req, res) => {
       razorpay_payment_id,
       razorpay_signature,
       courseId,
-      amount, // Ye frontend se aa raha hai
+      amount,
     } = req.body;
 
     // 1. Basic Validation
@@ -118,7 +118,7 @@ exports.verifyPayment = async (req, res) => {
         .json({ success: false, msg: "Payment details missing!" });
     }
 
-    // 2. Razorpay Signature Verification (Security Layer)
+    // 2. Razorpay Signature Verification
     const sign = razorpay_order_id + "|" + razorpay_payment_id;
     const expectedSign = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
@@ -132,7 +132,7 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    // 3. Double Check: Kahin ye payment pehle se verify toh nahi ho chuki?
+    // 3. Double Check (Duplicate Payment)
     const existingOrder = await Order.findOne({
       paymentId: razorpay_payment_id,
     });
@@ -154,19 +154,30 @@ exports.verifyPayment = async (req, res) => {
         .json({ success: false, msg: "User or Course not found" });
     }
 
-    // 5. Course Unlock & VIP Status Update
-    // Includes check taaki duplicate IDs na jayein array mein
+    // 🔥 5. AUTO CALCULATION LOGIC (Commission & Earnings)
+    const orderAmount = Number(amount);
+    const commRate = 20; // 20% कमीशन रेट
+    const platformCommission = (orderAmount * commRate) / 100;
+    const sellerEarnings = orderAmount - platformCommission;
+
+    // 6. User Status Update
     if (!user.purchasedCourses.includes(courseId)) {
       user.purchasedCourses.push(courseId);
     }
     user.isVip = true;
     user.badge = "vip";
 
-    // 6. Final Order Data Save
+    // 7. Final Order Data Save with Commission Fields
     const newOrder = new Order({
       productId: course._id,
       productName: course.title,
-      amount: Number(amount), // Final price jo pay hua
+      amount: orderAmount,
+
+      // ✅ DB में हिसाब सेव हो रहा है
+      platformCommission: platformCommission,
+      sellerEarnings: sellerEarnings,
+      commissionRate: commRate,
+
       sellerId: course.sellerId,
       sellerEmail: course.sellerEmail,
       sellerName: course.sellerName,
@@ -179,7 +190,6 @@ exports.verifyPayment = async (req, res) => {
       mailTrack: "Course Unlocked",
     });
 
-    // Save both in Parallel (Fast processing)
     await Promise.all([user.save(), newOrder.save()]);
 
     return res.status(200).json({
