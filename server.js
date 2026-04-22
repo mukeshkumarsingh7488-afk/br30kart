@@ -9,6 +9,7 @@ const cors = require("cors");
 const path = require("path");
 const http = require("http");
 const { Server } = require("socket.io");
+const Review = require("./models/Review");
 
 /* ================== ROUTES ================== */
 const adminRoutes = require("./routes/adminRoutes");
@@ -16,6 +17,10 @@ const paymentRoutes = require("./routes/pementRoutes");
 const authRoutes = require("./routes/authRoutes");
 const productRoutes = require("./routes/productRoutes");
 const sellerRoutes = require("./routes/sellerRoutes");
+const reviewRoutes = require("./routes/reviewRoutes");
+
+// Auto-Review System (Har 3 ghante me ek baar fake review post karega)
+require("./autoReview");
 
 /* ================== APP & SERVER INIT ================== */
 const app = express();
