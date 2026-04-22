@@ -54,26 +54,20 @@ exports.postReview = async (req, res) => {
 // ==========================================
 // 2. GET TOP REVIEWS (User Webpage Fix)
 // ==========================================
+const mongoose = require("mongoose");
+
 exports.getTopReviews = async (req, res) => {
   try {
-    // 1. Total Count (बिना किसी फिल्टर के)
     const totalReviewCount = await Review.countDocuments();
 
-    // 2. Aggregate with Safety
     const reviews = await Review.aggregate([
       {
-        // फिल्टर को ढीला कर दिया ताकि कोई भी रिव्यू न छूटे
         $match: {
-          $or: [
-            { status: "approved" },
-            { status: { $exists: false } },
-            { status: "" },
-          ],
+          $or: [{ status: "approved" }, { status: { $exists: false } }],
         },
       },
       { $sort: { createdAt: -1 } },
       {
-        // यूनिक यूजर्स के हिसाब से ग्रुपिंग
         $group: {
           _id: "$username",
           latestReview: { $first: "$$ROOT" },
@@ -81,27 +75,33 @@ exports.getTopReviews = async (req, res) => {
       },
       { $replaceRoot: { newRoot: "$latestReview" } },
       {
-        // lookup को थोड़ा सेफ बनाया
+        // 🔥 userId को ObjectId में कन्वर्ट करें ताकि Lookup मैच हो सके
+        $addFields: {
+          userId: { $toObjectId: "$userId" },
+        },
+      },
+      {
         $lookup: {
-          from: "users",
+          from: "users", // पक्का करें कि DB में नाम 'users' ही है (lowercase)
           localField: "userId",
           foreignField: "_id",
-          as: "userDetails", // नाम बदला ताकि userId (String/Object) डिस्टर्ब न हो
+          as: "userDetails",
         },
       },
       { $unwind: { path: "$userDetails", preserveNullAndEmptyArrays: true } },
-      { $limit: 20 }, // टॉप 20 रिव्यूज
+      { $sort: { createdAt: -1 } },
+      { $limit: 10 },
     ]);
 
-    // 3. फाइनल रिस्पॉन्स
-    return res.status(200).json({
+    // ✅ डेटा भेजने से पहले चेक करें कि कहीं एम्प्टी तो नहीं आ रहा
+    res.status(200).json({
       success: true,
       totalCount: totalReviewCount || 0,
       reviews: reviews || [],
     });
   } catch (err) {
-    console.error("Critical Aggregation Error:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    console.error("Aggregation Error:", err);
+    res.status(500).json({ error: err.message });
   }
 };
 
