@@ -77,6 +77,8 @@ app.use("/api/admin", adminRoutes);
 console.log("Seller Routes loading...");
 app.use("/api/seller", sellerRoutes);
 
+app.use("/api/reviews", reviewRoutes);
+
 /* ================== DATABASE CONNECTION ================== */
 
 // MongoDB connect
