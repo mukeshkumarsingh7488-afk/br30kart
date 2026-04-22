@@ -1,6 +1,7 @@
 // br30 kart
 const Review = require("../models/Review");
 const User = require("../models/User");
+const mongoose = require("mongoose");
 const { generateSmartReply } = require("../utils/reviewReply");
 //#endregion
 
@@ -54,7 +55,6 @@ exports.postReview = async (req, res) => {
 // ==========================================
 // 2. GET TOP REVIEWS (User Webpage Fix)
 // ==========================================
-const mongoose = require("mongoose");
 
 exports.getTopReviews = async (req, res) => {
   try {
@@ -90,7 +90,6 @@ exports.getTopReviews = async (req, res) => {
       },
       { $unwind: { path: "$userDetails", preserveNullAndEmptyArrays: true } },
       { $sort: { createdAt: -1 } },
-      { $limit: 10 },
     ]);
 
     // ✅ डेटा भेजने से पहले चेक करें कि कहीं एम्प्टी तो नहीं आ रहा
