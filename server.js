@@ -10,6 +10,7 @@ const path = require("path");
 const http = require("http");
 const { Server } = require("socket.io");
 const Review = require("./models/Review");
+const Order = require("./models/order");
 
 /* ================== ROUTES ================== */
 const adminRoutes = require("./routes/adminRoutes");
@@ -18,7 +19,6 @@ const authRoutes = require("./routes/authRoutes");
 const productRoutes = require("./routes/productRoutes");
 const sellerRoutes = require("./routes/sellerRoutes");
 const reviewRoutes = require("./routes/reviewRoutes");
-const Order = require("./models/order");
 
 // Auto-Review System (Har 3 ghante me ek baar fake review post karega)
 require("./autoReview");
@@ -88,9 +88,8 @@ mongoose
   .then(async () => {
     console.log("🔥 BR30Kart Database Connected!");
 
-    // ✅ माइग्रेशन कोड यहाँ डालो
+    // ✅ माइग्रेशन कोड (फिक्स पाथ के साथ)
     try {
-      const Order = require("./models/orderModel");
       const ordersToUpdate = await Order.find({
         $or: [
           { platformCommission: 0 },
@@ -109,6 +108,8 @@ mongoose
           await o.save();
         }
         console.log("✅ Purana Data Update Ho Gaya!");
+      } else {
+        console.log("ℹ️ No old orders to update.");
       }
     } catch (err) {
       console.error("❌ Migration Error:", err.message);
