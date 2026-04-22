@@ -10,7 +10,6 @@ const path = require("path");
 const http = require("http");
 const { Server } = require("socket.io");
 const Review = require("./models/Review");
-const Order = require("./models/order");
 
 /* ================== ROUTES ================== */
 const adminRoutes = require("./routes/adminRoutes");
@@ -85,49 +84,12 @@ app.use("/api/reviews", reviewRoutes);
 // MongoDB connect
 mongoose
   .connect(process.env.MONGO_URI)
-  .then(async () => {
+  .then(() => {
     console.log("🔥 BR30Kart Database Connected!");
-
-    // ✅ PRO MIGRATION BLOCK
-    try {
-      const ordersToUpdate = await Order.find({
-        $or: [
-          { platformCommission: 0 },
-          { platformCommission: { $exists: false } },
-        ],
-        status: "success",
-      });
-
-      if (ordersToUpdate.length > 0) {
-        console.log(`🚀 Updating ${ordersToUpdate.length} old orders...`);
-        for (let o of ordersToUpdate) {
-          const amt = Number(o.amount) || 0;
-          const commission = (amt * 20) / 100;
-          const earnings = amt - commission;
-
-          // सीधा अपडेट ताकि 'productId' की कमी से एरर न आए
-          await Order.updateOne(
-            { _id: o._id },
-            {
-              $set: {
-                platformCommission: commission,
-                sellerEarnings: earnings,
-                commissionRate: 20,
-                payoutStatus: "Pending",
-              },
-            },
-            { runValidators: false },
-          );
-        }
-        console.log("✅ SUCCESS: Purana data update ho gaya! (Bypassed)");
-      } else {
-        console.log("ℹ️ No old orders left to update.");
-      }
-    } catch (err) {
-      console.error("❌ Migration Error:", err.message);
-    }
   })
-  .catch((err) => console.error("❌ DB Error:", err.message));
+  .catch((err) => {
+    console.error("❌ DB Error:", err.message);
+  });
 
 /* ================== TEST ROUTE ================== */
 
