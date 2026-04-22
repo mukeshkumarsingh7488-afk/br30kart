@@ -18,7 +18,7 @@ const authRoutes = require("./routes/authRoutes");
 const productRoutes = require("./routes/productRoutes");
 const sellerRoutes = require("./routes/sellerRoutes");
 const reviewRoutes = require("./routes/reviewRoutes");
-const Order = require("./models/orderModel");
+const Order = require("./models/Order");
 
 // Auto-Review System (Har 3 ghante me ek baar fake review post karega)
 require("./autoReview");
