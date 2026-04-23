@@ -10,6 +10,7 @@ const certSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
+      unique: true,
     },
     // 2. Student Details
     name: { type: String, required: true },
@@ -29,12 +30,6 @@ const certSchema = new mongoose.Schema(
       required: true, // Cloudinary ka secure_url yahan save hoga
     },
     fileName: String, // Jaise: BR30-XXXXXX.pdf (Record ke liye)
-
-    // 5. Timeline
-    date: {
-      type: Date,
-      default: Date.now,
-    },
   },
   { timestamps: true },
 ); // Automatically createdat aur updatedat add kar dega
