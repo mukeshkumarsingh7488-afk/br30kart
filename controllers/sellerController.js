@@ -138,36 +138,52 @@ exports.getBestSellers = async (req, res) => {
         .status(400)
         .json({ success: false, message: "Email required" });
 
-    // 1. एग्रीगेशन (Stat Boxes के लिए)
+    // 1. एग्रीगेशन (Stat Boxes के लिए एकदम सटीक कैलकुलेशन)
     const salesStats = await Order.aggregate([
       { $match: { sellerEmail: email, status: "success" } },
       {
         $group: {
           _id: "$productName",
           count: { $sum: 1 },
-          revenue: { $sum: { $toDouble: "$amount" } }, // 'revenue' नाम रख ताकि फ्रंटएंड से मैच हो
-          totalEarnings: { $sum: { $toDouble: "$sellerEarnings" } },
+          // 🔥 $trim और $replaceOne का उपयोग ताकि अगर "₹" या " " हो तो भी सही कैलकुलेशन हो
+          revenue: {
+            $sum: {
+              $toDouble: {
+                $trim: { input: { $ifNull: ["$amount", "0"] } },
+              },
+            },
+          },
+          totalEarnings: {
+            $sum: {
+              $toDouble: {
+                $trim: { input: { $ifNull: ["$sellerEarnings", "0"] } },
+              },
+            },
+          },
         },
       },
-      { $sort: { count: -1 } },
+      // सबसे ज़्यादा "Revenue" वाला ऊपर आए (ताकि ₹6000 वाला ही 1st दिखे)
+      { $sort: { revenue: -1 } },
     ]);
 
-    // 2. 🔥 टेबल के लिए डेटा (ये तू मिस कर रहा था)
+    // 2. टेबल के लिए सभी ऑर्डर्स (Latest First)
     const allOrders = await Order.find({
       sellerEmail: email,
       status: "success",
     }).sort({ createdAt: -1 });
 
+    // 3. सबसे कम बिकने वाला (सबसे आखिरी वाला)
     const worstSeller =
-      salesStats.length > 0 ? salesStats[salesStats.length - 1] : null;
+      salesStats.length > 1 ? salesStats[salesStats.length - 1] : null;
 
     res.status(200).json({
       success: true,
       topSellers: salesStats,
       worstSeller: worstSeller,
-      allData: allOrders, // 👈 अब फ्रंटएंड को टेबल के लिए डेटा मिलेगा
+      allData: allOrders,
     });
   } catch (err) {
+    console.error("❌ Controller Error:", err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 };
