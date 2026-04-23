@@ -19,7 +19,7 @@ const generateProfessionalCert = async (user, fullName, certId, courseName) => {
 
       // 📱 2. QR Link for Verification
       const frontendBase =
-        process.env.FRONTEND_URL || "https://br30kart-api.onrender.com";
+        process.env.FRONTEND_URL || "https://br-30-kart.vercel.app/";
       const qrData = `${frontendBase.replace(/\/$/, "")}/pages/verify.html?id=${certId || ""}`;
       const qrImage = await QRCode.toDataURL(qrData);
 
