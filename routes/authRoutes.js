@@ -6,7 +6,7 @@ const sellerUpload = require("../middleware/sellerUpload");
 const authController = require("../controllers/authController");
 const generateProfessionalCert = require("../utils/generateProfessionalCert");
 const auth = require("../middleware/auth");
-const cloudinary = require("cloudinary").v2;
+const cloudinary = require("../config/cloudinary");
 const { sendEmail, vipCertTemplate } = require("../utils/emailTemplate");
 
 const Certificate = require("../models/certificate");
