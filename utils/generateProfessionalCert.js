@@ -20,7 +20,7 @@ const generateProfessionalCert = async (user, fullName, certId, courseName) => {
       // 📱 2. QR Link for Verification
       const frontendBase =
         process.env.FRONTEND_URL || "https://my-frontend-eight-roan.vercel.app";
-      const qrData = `${frontendBase}/verify.html?id=${certId}`;
+      const qrData = `${frontendBase.replace(/\/$/, "")}/pages/verify.html?id=${certId || ""}`;
       const qrImage = await QRCode.toDataURL(qrData);
 
       // 📄 3. PDF Setup
