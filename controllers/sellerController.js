@@ -133,18 +133,23 @@ exports.getSellerSalesRecords = async (req, res) => {
 exports.getBestSellers = async (req, res) => {
   try {
     const { email } = req.query;
-    if (!email)
+    if (!email) {
+      console.log("⚠️ [WARNING]: Email missing in query params");
       return res
         .status(400)
         .json({ success: false, message: "Email required" });
+    }
 
-    // 1. एग्रीगेशन (Stat Boxes के लिए एकदम सटीक कैलकुलेशन)
+    console.log(`📊 [FETCHING]: Best Seller Data for: ${email}`);
+
+    // 1. एग्रीगेशन (Stat Boxes के लिए - Safe Conversion)
     const salesStats = await Order.aggregate([
       { $match: { sellerEmail: email, status: "success" } },
       {
         $group: {
           _id: "$productName",
           count: { $sum: 1 },
+          // $convert सबसे सेफ है क्योंकि ये String और Number दोनों को झेल लेता है
           revenue: {
             $sum: {
               $convert: {
@@ -157,14 +162,16 @@ exports.getBestSellers = async (req, res) => {
           },
           totalEarnings: {
             $sum: {
-              $toDouble: {
-                $trim: { input: { $ifNull: ["$sellerEarnings", "0"] } },
+              $convert: {
+                input: "$sellerEarnings",
+                to: "double",
+                onError: 0.0,
+                onNull: 0.0,
               },
             },
           },
         },
       },
-      // सबसे ज़्यादा "Revenue" वाला ऊपर आए (ताकि ₹6000 वाला ही 1st दिखे)
       { $sort: { revenue: -1 } },
     ]);
 
@@ -174,7 +181,11 @@ exports.getBestSellers = async (req, res) => {
       status: "success",
     }).sort({ createdAt: -1 });
 
-    // 3. सबसे कम बिकने वाला (सबसे आखिरी वाला)
+    console.log(
+      `✅ [SUCCESS]: Stats found: ${salesStats.length}, Total Orders: ${allOrders.length}`,
+    );
+
+    // 3. सबसे कम बिकने वाला
     const worstSeller =
       salesStats.length > 1 ? salesStats[salesStats.length - 1] : null;
 
@@ -185,7 +196,7 @@ exports.getBestSellers = async (req, res) => {
       allData: allOrders,
     });
   } catch (err) {
-    console.error("❌ Controller Error:", err.message);
+    console.error("❌ [CRITICAL ERROR]:", err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 };
