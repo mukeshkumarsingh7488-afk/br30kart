@@ -110,7 +110,7 @@ const generateProfessionalCert = async (user, fullName, certId, courseName) => {
       doc
         .fontSize(8)
         .fillColor("#94a3b8")
-        .text("SCAN TO VERIFY 🛡️", 0, 525, { align: "center" });
+        .text("SCAN TO VERIFY ", 0, 525, { align: "center" });
 
       doc
         .fontSize(10)
