@@ -92,23 +92,23 @@ router.get("/", async (req, res) => {
     const products = await Product.find().sort({ createdAt: -1 });
     const now = new Date().getTime();
 
-    // 🔥 डेटा भेजने से पहले डिस्काउंट चेक करो
     const updatedProducts = products.map((product) => {
-      let p = product.toObject(); // Plain JS object में बदलें ताकि बदलाव कर सकें
+      let p = product.toObject();
 
-      // 5 MINUTE TEST LOGIC
-      // अगर 'couponCreatedAt' नहीं है, तो 'createdAt' का इस्तेमाल करेगा
+      // अगर couponCreatedAt नहीं है, तो createdAt लेगा
       const startTime = new Date(p.couponCreatedAt || p.createdAt).getTime();
-      const expiryTime = startTime + 5 * 60 * 1000; // 5 मिनट जोड़ रहे हैं
+
+      // ⚡ अभी टेस्ट के लिए 6 घंटे रखो, क्योंकि DB UTC में होता है
+      const expiryTime = startTime + 6 * 60 * 60 * 1000;
 
       if (now > expiryTime) {
-        p.discount = 0; // टाइम खत्म, तो डिस्काउंट भी खत्म
+        p.discount = 0;
       }
 
       return p;
     });
 
-    res.json(updatedProducts); // अब साफ़-सुथरा डेटा भेजो
+    res.json(updatedProducts);
   } catch (err) {
     res.status(500).json({ error: "Data fetch nahi ho raha!" });
   }
