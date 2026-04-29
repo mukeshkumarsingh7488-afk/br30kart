@@ -136,11 +136,12 @@ router.put("/update-discount/:id", async (req, res) => {
       req.params.id,
       {
         discount: discount,
+        discountSource: "individual",
         couponCreatedAt: new Date(),
       },
       { new: true },
     );
-    res.json({ message: "Discount Updated!", data: updated });
+    res.json({ message: "Individual Discount Updated!", data: updated });
   } catch (err) {
     res.status(500).json({ error: "Update error" });
   }
