@@ -132,18 +132,19 @@ router.get("/my-products/:email", async (req, res) => {
 router.put("/update-discount/:id", async (req, res) => {
   try {
     const { discount } = req.body;
-    const updated = await Product.findByIdAndUpdate(
-      req.params.id,
-      {
-        discount: discount,
-        discountSource: "individual",
-        couponCreatedAt: new Date(),
-      },
-      { new: true },
-    );
-    res.json({ message: "Individual Discount Updated!", data: updated });
+
+    const updateData = {
+      discount: discount,
+      couponCreatedAt: new Date(),
+      discountSource: discount > 0 ? "individual" : null,
+    };
+
+    const updated = await Product.findByIdAndUpdate(req.params.id, updateData, {
+      new: true,
+    });
+    res.json({ message: "Update Successful!", data: updated });
   } catch (err) {
-    res.status(500).json({ error: "Update error" });
+    res.status(500).json({ error: err.message });
   }
 });
 
