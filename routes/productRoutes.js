@@ -95,14 +95,22 @@ router.get("/", async (req, res) => {
     const updatedProducts = products.map((product) => {
       let p = product.toObject();
 
-      // अगर couponCreatedAt नहीं है, तो createdAt लेगा
-      const startTime = new Date(p.couponCreatedAt || p.createdAt).getTime();
+      // 1. अगर प्रोडक्ट में डिस्काउंट है (Mega Sale)
+      if (p.discount && p.discount > 0) {
+        // समय निकालो (couponCreatedAt को प्राथमिकता दें)
+        const startTime = new Date(p.couponCreatedAt || p.createdAt).getTime();
 
-      // ⚡ अभी टेस्ट के लिए 6 घंटे रखो, क्योंकि DB UTC में होता है
-      const expiryTime = startTime + 6 * 60 * 60 * 1000;
+        // टेस्ट के लिए इसे 7 दिन की वैलिडिटी दे देते हैं
+        const expiryTime = startTime + 7 * 24 * 60 * 60 * 1000;
 
-      if (now > expiryTime) {
-        p.discount = 0;
+        // टर्मिनल में चेक करने के लिए (Debug)
+        console.log(
+          `Product: ${p.title}, Expiry: ${new Date(expiryTime)}, Expired: ${now > expiryTime}`,
+        );
+
+        if (now > expiryTime) {
+          p.discount = 0; // अगर सच में पुराना है तो ही 0 होगा
+        }
       }
 
       return p;
@@ -110,7 +118,8 @@ router.get("/", async (req, res) => {
 
     res.json(updatedProducts);
   } catch (err) {
-    res.status(500).json({ error: "Data fetch nahi ho raha!" });
+    console.error("Backend Error:", err);
+    res.status(500).json({ error: "Fetch logic fail!" });
   }
 });
 
