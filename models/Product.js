@@ -5,7 +5,6 @@ const mongoose = require("mongoose");
 const ProductSchema = new mongoose.Schema(
   {
     title: { type: String, required: true },
-
     category: {
       type: String,
       enum: [
@@ -23,9 +22,18 @@ const ProductSchema = new mongoose.Schema(
     thumbnail: { type: String, required: true },
     sellerEmail: { type: String, required: true },
     sellerName: { type: String, required: true },
+
+    // 🔥 DISCOUNT LOGIC
     discount: { type: Number, default: 0 },
 
-    // 🔥 NEW: Multi-Seller Controls
+    // ✅ NEW: Yeh batayega ki discount "Global" hai ya "Individual"
+    discountSource: {
+      type: String,
+      enum: ["global", "individual", null],
+      default: null,
+    },
+
+    // 🔥 MULTI-SELLER CONTROLS
     isApproved: { type: Boolean, default: true },
     isFeatured: { type: Boolean, default: false },
     isVisible: { type: Boolean, default: true },
@@ -35,20 +43,23 @@ const ProductSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-// 🔥 5 मिनट का टेस्ट लॉजिक (इसे बाद में 7 दिन कर देना)
+// 🕒 VIRTUAL: 7 Din ki Auto-Expiry Check (Backend/Frontend ke liye)
 ProductSchema.virtual("isDiscountValid").get(function () {
   if (!this.discount || this.discount <= 0) return false;
 
   const startTime = this.couponCreatedAt || this.createdAt;
-  const fiveMinutes = 5 * 60 * 1000;
-  const expiryTime = new Date(startTime).getTime() + fiveMinutes;
+  const sevenDays = 7 * 24 * 60 * 60 * 1000; // ✅ 7 Din Set kiya hai
+  const expiryTime = new Date(startTime).getTime() + sevenDays;
 
-  return Date.now() < expiryTime; // अगर अभी का समय एक्सपायरी से कम है तो true
+  return Date.now() < expiryTime;
 });
 
-// इसे JSON में भेजने के लिए यह ज़रूरी है
+// Virtuals ko JSON me dikhane ke liye
 ProductSchema.set("toJSON", { virtuals: true });
+ProductSchema.set("toObject", { virtuals: true });
+
 module.exports = mongoose.model("Product", ProductSchema);
+
 //#endregion
 // ==========================================
 // ✅ Schema organized, validated, and refactored.

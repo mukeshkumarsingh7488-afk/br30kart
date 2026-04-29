@@ -97,8 +97,7 @@ router.get("/", async (req, res) => {
 
       if (p.discount && p.discount > 0) {
         const startTime = new Date(p.couponCreatedAt || p.createdAt).getTime();
-        const expiryTime = startTime + 5 * 60 * 1000;
-        //const expiryTime = startTime + 7 * 24 * 60 * 60 * 1000;
+        const expiryTime = startTime + 7 * 24 * 60 * 60 * 1000;
 
         console.log(
           `Product: ${p.title}, Expiry: ${new Date(expiryTime)}, Expired: ${now > expiryTime}`,
@@ -253,23 +252,32 @@ router.put("/update/:id", upload.single("thumbnail"), async (req, res) => {
     res.status(500).json({ error: "Update Error", details: err.message });
   }
 });
-// 11. 🏷️ BULK DISCOUNT UPDATE | @route: PUT /api/products/bulk-discount
 router.post("/set-global-discount", async (req, res) => {
   try {
     const { discount, sellerEmail } = req.body;
 
-    // Sirf us seller ke saare products update karo
-    await Product.updateMany(
-      { sellerEmail: sellerEmail },
-      {
-        discount: discount,
-        couponCreatedAt: new Date(), // Timer sabpe ek saath shuru hoga
-      },
-    );
+    if (discount > 0) {
+      await Product.updateMany(
+        { sellerEmail: sellerEmail },
+        {
+          discount: discount,
+          discountSource: "global",
+          couponCreatedAt: new Date(),
+        },
+      );
+    } else {
+      await Product.updateMany(
+        { sellerEmail: sellerEmail, discountSource: "global" },
+        {
+          discount: 0,
+          discountSource: null,
+        },
+      );
+    }
 
-    res.json({ message: "Global Discount Applied to all courses!" });
+    res.json({ message: "Global discount logic updated!" });
   } catch (err) {
-    res.status(500).json({ error: "Global update failed!" });
+    res.status(500).json({ error: "Update failed!" });
   }
 });
 
